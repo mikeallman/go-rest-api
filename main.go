@@ -1,9 +1,16 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	CORRELATION_HEADER = "Correlation-Id"
 )
 
 type request struct {
@@ -14,6 +21,17 @@ type request struct {
 type nestedStruct struct {
 	Other  string  `json:"other" binding:"required"`
 	Number float64 `json:"number" binding:"required,gte=0"`
+}
+
+type logMsg struct {
+	ClientIP      string
+	TimeStamp     string
+	Method        string
+	Path          string
+	Status        int
+	Latency       string
+	ErrorMessage  string
+	CorrelationID string
 }
 
 func echoHandler(c *gin.Context) {
@@ -29,16 +47,47 @@ func livenessHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func logFormatter(param gin.LogFormatterParams) string {
+
+	correlationID := ""
+	ch := param.Request.Header[CORRELATION_HEADER]
+	if len(ch) > 0 {
+		correlationID = ch[0]
+	}
+
+	m := logMsg{
+		ClientIP:      param.ClientIP,
+		TimeStamp:     param.TimeStamp.Format(time.RFC1123),
+		Method:        param.Method,
+		Path:          param.Path,
+		Status:        param.StatusCode,
+		Latency:       param.Latency.String(),
+		ErrorMessage:  param.ErrorMessage,
+		CorrelationID: correlationID,
+	}
+
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "error formatting log:" + fmt.Sprintf("%+v\n", m) + "\n"
+	}
+	return string(b) + "\n"
+
+}
+
 func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 
-	echoRouter := gin.Default()
+	echoRouter := gin.New()
+	echoRouter.Use(gin.Recovery())
 	echoRouter.SetTrustedProxies(nil)
+	echoRouter.Use(gin.LoggerWithFormatter(logFormatter))
 	echoRouter.POST("/echo", echoHandler)
 
-	livenessRouter := gin.Default()
+	livenessRouter := gin.New()
+	livenessRouter.Use(gin.Recovery())
 	livenessRouter.SetTrustedProxies(nil)
+	livenessRouter.Use(gin.LoggerWithFormatter(logFormatter))
 	livenessRouter.GET("/liveness", livenessHandler)
 
 	go echoRouter.Run(":8080")
