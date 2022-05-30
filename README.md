@@ -1,0 +1,1 @@
+Playing around with Go/Gin to see how the json marshalling works
