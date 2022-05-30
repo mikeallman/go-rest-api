@@ -16,18 +16,31 @@ type nestedStruct struct {
 	Number float64 `json:"number" binding:"required,gte=0"`
 }
 
+func echoHandler(c *gin.Context) {
+	var req request
+	if err := c.BindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, req)
+}
+
+func livenessHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func main() {
-	router := gin.Default()
-	router.SetTrustedProxies(nil)
-	router.POST("/echo", func(c *gin.Context) {
-		var req request
-		if err := c.BindJSON(&req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-		c.JSON(http.StatusOK, req)
-	})
 
-	router.Run(":8080")
+	gin.SetMode(gin.ReleaseMode)
 
+	echoRouter := gin.Default()
+	echoRouter.SetTrustedProxies(nil)
+	echoRouter.POST("/echo", echoHandler)
+
+	livenessRouter := gin.Default()
+	livenessRouter.SetTrustedProxies(nil)
+	livenessRouter.GET("/liveness", livenessHandler)
+
+	go echoRouter.Run(":8080")
+	livenessRouter.Run(":8081")
 }
